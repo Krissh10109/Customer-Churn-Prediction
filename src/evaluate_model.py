@@ -23,7 +23,6 @@ def evaluate_model(data_path, model_path='models/churn_model.pkl', outputs_dir='
     df = load_data(data_path)
     df = clean_data(df)
     
-    # Split data in exact same way to get the test set
     from sklearn.model_selection import train_test_split
     df['Churn'] = df['Churn'].map({'Yes': 1, 'No': 0})
     X = df.drop(columns=['Churn'])
@@ -44,7 +43,7 @@ def evaluate_model(data_path, model_path='models/churn_model.pkl', outputs_dir='
     f1 = f1_score(y_test, y_pred)
     roc_auc = roc_auc_score(y_test, y_prob)
     
-    print("\n================ Model Evaluation ================")
+    print("\n================ Best Model Evaluation ================")
     print(f"Accuracy:  {accuracy:.4f}")
     print(f"Precision: {precision:.4f}")
     print(f"Recall:    {recall:.4f}")
@@ -52,9 +51,8 @@ def evaluate_model(data_path, model_path='models/churn_model.pkl', outputs_dir='
     print(f"ROC-AUC:   {roc_auc:.4f}")
     print("\nClassification Report:")
     print(classification_report(y_test, y_pred))
-    print("==================================================")
+    print("========================================================")
     
-    # Ensure outputs directory exists
     os.makedirs(outputs_dir, exist_ok=True)
     
     # 1. Confusion Matrix
@@ -87,8 +85,7 @@ def evaluate_model(data_path, model_path='models/churn_model.pkl', outputs_dir='
     plt.close()
     print("Saved roc_curve.png")
     
-    # 3. Feature Importance
-    # Extract feature names from preprocessor and importances from RandomForest
+    # 3. Feature Importance / Coefficients
     preprocessor = pipeline.named_steps['preprocessor']
     classifier = pipeline.named_steps['classifier']
     
@@ -99,20 +96,28 @@ def evaluate_model(data_path, model_path='models/churn_model.pkl', outputs_dir='
     encoded_cat_features = cat_encoder.get_feature_names_out(categorical_features).tolist()
     feature_names = numeric_features + encoded_cat_features
     
-    importances = classifier.feature_importances_
+    if hasattr(classifier, 'feature_importances_'):
+        importances = classifier.feature_importances_
+        title_str = 'Top 15 Feature Importances'
+    elif hasattr(classifier, 'coef_'):
+        importances = np.abs(classifier.coef_[0])
+        title_str = 'Top 15 Absolute Feature Coefficients'
+    else:
+        importances = np.zeros(len(feature_names))
+        title_str = 'Feature Impact'
+        
     feat_imp = pd.Series(importances, index=feature_names).sort_values(ascending=False).head(15)
     
     plt.figure(figsize=(10, 6))
-    sns.barplot(x=feat_imp.values, y=feat_imp.index, palette='viridis')
-    plt.title('Top 15 Feature Importances', fontsize=14, pad=15)
-    plt.xlabel('Importance Score', fontsize=12)
+    sns.barplot(x=feat_imp.values, y=feat_imp.index, palette='viridis', hue=feat_imp.index, legend=False)
+    plt.title(title_str, fontsize=14, pad=15)
+    plt.xlabel('Importance / Weight Magnitude', fontsize=12)
     plt.ylabel('Feature', fontsize=12)
     plt.tight_layout()
     plt.savefig(os.path.join(outputs_dir, 'feature_importance.png'), dpi=300)
     plt.close()
     print("Saved feature_importance.png")
     
-    # Write evaluation metrics to a text file for summary
     with open(os.path.join(outputs_dir, 'evaluation_metrics.txt'), 'w') as f:
         f.write(f"Accuracy:  {accuracy:.4f}\n")
         f.write(f"Precision: {precision:.4f}\n")
