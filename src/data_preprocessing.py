@@ -1,99 +1,172 @@
 import os
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-import joblib
+import csv
+import math
+import random
+import json
 
-def load_data(filepath):
-    """
-    Load the Telco customer churn dataset from the given path.
-    """
+def load_csv(filepath):
     if not os.path.exists(filepath):
         raise FileNotFoundError(f"File not found at {filepath}")
-    return pd.read_csv(filepath)
+    with open(filepath, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        headers = next(reader)
+        data = [row for row in reader if row]
+    return headers, data
 
-def clean_data(df):
-    """
-    Perform basic cleaning operations on the dataset.
-    """
-    df = df.copy()
+def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('data', 'cleaned')):
+    print("Loading raw dataset with standard library...")
+    headers, data = load_csv(data_path)
     
-    # Convert TotalCharges to numeric, replace blank spaces with NaN, and impute with median or 0
-    df['TotalCharges'] = pd.to_numeric(df['TotalCharges'].replace(' ', np.nan), errors='coerce')
-    # Impute missing TotalCharges (which are usually for tenure=0) with 0.0
-    df['TotalCharges'] = df['TotalCharges'].fillna(0.0)
+    # Header indices
+    header_idx = {h: i for i, h in enumerate(headers)}
     
-    # Drop customerID as it's not a predictor
-    if 'customerID' in df.columns:
-        df = df.drop(columns=['customerID'])
-        
-    return df
-
-def preprocess_data(data_path, models_dir='models'):
-    """
-    Load, clean, build preprocessing pipeline, and split data into train/test sets.
-    Saves the fitted preprocessing pipeline to models_dir.
-    """
-    df = load_data(data_path)
-    df = clean_data(df)
+    # Drop customerID if present
+    cust_id_idx = header_idx.get('customerID', None)
+    churn_idx = header_idx.get('Churn', None)
     
-    # Map target Churn variable to binary
-    if 'Churn' in df.columns:
-        df['Churn'] = df['Churn'].map({'Yes': 1, 'No': 0})
-        X = df.drop(columns=['Churn'])
-        y = df['Churn']
-    else:
-        X = df
-        y = None
-        
-    # Define feature types
-    numeric_features = ['tenure', 'MonthlyCharges', 'TotalCharges']
-    categorical_features = [col for col in X.columns if col not in numeric_features]
+    feature_indices = [i for i in range(len(headers)) if i not in (cust_id_idx, churn_idx)]
+    feature_names_raw = [headers[i] for i in feature_indices]
     
-    # Create preprocessing pipeline
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', StandardScaler(), numeric_features),
-            ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_features)
-        ]
-    )
+    numeric_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
     
-    # Split the data
-    if y is not None:
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
+    # Process rows
+    processed_rows = []
+    targets = []
+    
+    for row in data:
+        if not row: continue
+        target = 1 if row[churn_idx].strip() == 'Yes' else 0
+        targets.append(target)
         
-        # Fit preprocessor on training data
-        X_train_preprocessed = preprocessor.fit_transform(X_train)
-        X_test_preprocessed = preprocessor.transform(X_test)
+        row_dict = {}
+        for idx in feature_indices:
+            col_name = headers[idx]
+            val = row[idx].strip()
+            if col_name == 'TotalCharges':
+                # Impute missing TotalCharges with 0.0
+                try:
+                    val = float(val)
+                except ValueError:
+                    val = 0.0
+            elif col_name in ['tenure', 'MonthlyCharges']:
+                val = float(val) if val else 0.0
+            row_dict[col_name] = val
+        processed_rows.append(row_dict)
         
-        # Get feature names after one-hot encoding
-        cat_encoder = preprocessor.named_transformers_['cat']
-        encoded_cat_features = cat_encoder.get_feature_names_out(categorical_features).tolist()
-        feature_names = numeric_features + encoded_cat_features
+    # Get distinct values for categorical variables for One-Hot Encoding
+    cat_values = {}
+    for col in feature_names_raw:
+        if col not in numeric_cols:
+            cat_values[col] = sorted(list(set(r[col] for r in processed_rows)))
+            
+    # Build encoded feature list
+    encoded_feature_names = []
+    for col in feature_names_raw:
+        if col in numeric_cols:
+            encoded_feature_names.append(col)
+        else:
+            for val in cat_values[col]:
+                encoded_feature_names.append(f"{col}_{val}")
+                
+    # One-Hot Encode and convert to numeric vectors
+    X_vectors = []
+    for r in processed_rows:
+        vector = []
+        for col in feature_names_raw:
+            if col in numeric_cols:
+                vector.append(float(r[col]))
+            else:
+                for val in cat_values[col]:
+                    vector.append(1.0 if r[col] == val else 0.0)
+        X_vectors.append(vector)
         
-        # Convert to dataframes
-        X_train_df = pd.DataFrame(X_train_preprocessed, columns=feature_names)
-        X_test_df = pd.DataFrame(X_test_preprocessed, columns=feature_names)
+    # Stratified 80/20 train test split
+    random.seed(42)
+    pos_indices = [i for i, t in enumerate(targets) if t == 1]
+    neg_indices = [i for i, t in enumerate(targets) if t == 0]
+    
+    random.shuffle(pos_indices)
+    random.shuffle(neg_indices)
+    
+    train_pos_len = int(0.8 * len(pos_indices))
+    train_neg_len = int(0.8 * len(neg_indices))
+    
+    train_idx = set(pos_indices[:train_pos_len] + neg_indices[:train_neg_len])
+    test_idx = set(pos_indices[train_pos_len:] + neg_indices[train_neg_len:])
+    
+    X_train_raw = [X_vectors[i] for i in range(len(X_vectors)) if i in train_idx]
+    y_train = [targets[i] for i in range(len(targets)) if i in train_idx]
+    
+    X_test_raw = [X_vectors[i] for i in range(len(X_vectors)) if i in test_idx]
+    y_test = [targets[i] for i in range(len(targets)) if i in test_idx]
+    
+    # Compute mean and std on numeric columns from training data for Standard Scaling
+    num_indices = [encoded_feature_names.index(col) for col in numeric_cols]
+    means = {}
+    stds = {}
+    
+    for idx in num_indices:
+        vals = [row[idx] for row in X_train_raw]
+        mean = sum(vals) / len(vals)
+        variance = sum((x - mean) ** 2 for x in vals) / len(vals)
+        std = math.sqrt(variance) if variance > 0 else 1.0
+        means[idx] = mean
+        stds[idx] = std
         
-        # Save preprocessor
-        os.makedirs(models_dir, exist_ok=True)
-        joblib.dump(preprocessor, os.path.join(models_dir, 'preprocessor.pkl'))
-        print("Preprocessor saved successfully.")
+    # Scale numerical columns
+    def scale_dataset(dataset):
+        scaled = []
+        for row in dataset:
+            new_row = list(row)
+            for idx in num_indices:
+                new_row[idx] = (new_row[idx] - means[idx]) / stds[idx]
+            scaled.append(new_row)
+        return scaled
         
-        return X_train_df, X_test_df, y_train, y_test, feature_names
-    else:
-        return preprocessor.transform(X)
+    X_train_scaled = scale_dataset(X_train_raw)
+    X_test_scaled = scale_dataset(X_test_raw)
+    
+    # Export cleaned files and model params
+    os.makedirs(cleaned_dir, exist_ok=True)
+    os.makedirs(models_dir, exist_ok=True)
+    
+    def save_matrix(filepath, feature_names, matrix, labels=None):
+        with open(filepath, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            header = feature_names + (['Churn'] if labels is not None else [])
+            writer.writerow(header)
+            for i, row in enumerate(matrix):
+                out_row = list(row)
+                if labels is not None:
+                    out_row.append(labels[i])
+                writer.writerow(out_row)
+                
+    save_matrix(os.path.join(cleaned_dir, 'train_data.csv'), encoded_feature_names, X_train_scaled, y_train)
+    save_matrix(os.path.join(cleaned_dir, 'test_data.csv'), encoded_feature_names, X_test_scaled, y_test)
+    
+    # Save preprocessor metadata
+    preprocessor_meta = {
+        'feature_names': encoded_feature_names,
+        'numeric_cols': numeric_cols,
+        'cat_values': cat_values,
+        'num_indices': num_indices,
+        'means': {encoded_feature_names[i]: means[i] for i in num_indices},
+        'stds': {encoded_feature_names[i]: stds[i] for i in num_indices}
+    }
+    
+    with open(os.path.join(models_dir, 'preprocessor.json'), 'w', encoding='utf-8') as f:
+        json.dump(preprocessor_meta, f, indent=4)
+        
+    print(f"Data Preprocessed Successfully: Train rows={len(X_train_scaled)}, Test rows={len(X_test_scaled)}, Features={len(encoded_feature_names)}")
+    return X_train_scaled, X_test_scaled, y_train, y_test, encoded_feature_names
 
 if __name__ == '__main__':
-    # Test script run
-    data_path = os.path.join('Customer-Churn-Prediction', 'data', 'Telco_Customer_Churn_Dataset.csv')
-    if os.path.exists(data_path):
-        X_train, X_test, y_train, y_test, features = preprocess_data(data_path)
-        print(f"Data preprocessed. X_train shape: {X_train.shape}, features count: {len(features)}")
+    paths = [
+        os.path.join('data', 'Telco_Customer_Churn_Dataset.csv'),
+        os.path.join('Customer-Churn-Prediction', 'data', 'Telco_Customer_Churn_Dataset.csv')
+    ]
+    data_path = next((p for p in paths if os.path.exists(p)), None)
+    if data_path:
+        preprocess_data(data_path)
     else:
-        print(f"Please place the Telco_Customer_Churn_Dataset.csv in {data_path} first.")
+        print("Data file not found.")

@@ -1,0 +1,17 @@
+Rank | Feature Name | Absolute Weight | Sign
+--------------------------------------------------
+ 1   | tenure                         | 0.7357 | Negative (-)
+ 2   | Contract_Month-to-month        | 0.5396 | Positive (+)
+ 3   | Contract_Two year              | 0.5190 | Negative (-)
+ 4   | InternetService_DSL            | 0.3062 | Negative (-)
+ 5   | InternetService_Fiber optic    | 0.2899 | Positive (+)
+ 6   | MonthlyCharges                 | 0.2843 | Positive (+)
+ 7   | PaymentMethod_Electronic check | 0.2703 | Positive (+)
+ 8   | OnlineSecurity_Yes             | 0.2230 | Negative (-)
+ 9   | OnlineSecurity_No              | 0.2067 | Positive (+)
+10   | TechSupport_Yes                | 0.1881 | Negative (-)
+11   | PaperlessBilling_No            | 0.1860 | Negative (-)
+12   | PaymentMethod_Credit card (automatic) | 0.1815 | Negative (-)
+13   | SeniorCitizen_0                | 0.1804 | Negative (-)
+14   | MultipleLines_No               | 0.1786 | Negative (-)
+15   | TechSupport_No                 | 0.1717 | Positive (+)

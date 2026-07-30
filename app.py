@@ -96,10 +96,11 @@ st.title("⚡ Enterprise Customer Churn Platform")
 st.caption("Powered by Machine Learning & Predictive Analytics — SaiKet Systems Task Solution")
 
 if model_loaded:
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "👤 Single Customer Predictor",
         "📁 Batch CSV Predictor",
-        "📊 Executive Cohort Analytics"
+        "📊 Executive Cohort Analytics",
+        "🎛️ What-If Simulator"
     ])
 
     # TAB 1: Single Customer Predictor
@@ -278,3 +279,65 @@ if model_loaded:
             st.pyplot(fig)
         else:
             st.warning("Dataset not found to render executive charts.")
+
+    # TAB 4: What-If Simulator
+    with tab4:
+        st.markdown("### 🎛️ What-If Retention Simulator")
+        st.markdown("Select a baseline profile and toggle retention levers to instantly see the impact on churn probability.")
+        
+        sim_c1, sim_c2 = st.columns([1, 1])
+        with sim_c1:
+            st.markdown("#### Base Profile")
+            base_tenure = st.slider("Simulated Tenure (Months)", min_value=1, max_value=72, value=3)
+            base_monthly = st.number_input("Base Monthly Charges ($)", min_value=10.0, max_value=150.0, value=75.0, step=1.0)
+            base_internet = st.selectbox("Base Internet", ["Fiber optic", "DSL", "No"])
+            base_contract = st.selectbox("Base Contract", ["Month-to-month", "One year", "Two year"])
+        
+        with sim_c2:
+            st.markdown("#### Retention Levers")
+            lever_tech_support = st.checkbox("Add Tech Support?", value=False)
+            lever_online_security = st.checkbox("Add Online Security?", value=False)
+            lever_contract = st.selectbox("Upgrade Contract To:", ["Same as Base", "One year", "Two year"])
+            
+        st.markdown("---")
+        
+        def build_sim_df(tenure, monthly, internet, contract, has_tech, has_sec):
+            return pd.DataFrame([{
+                'gender': 'Female', 'SeniorCitizen': 0, 'Partner': 'No', 'Dependents': 'No',
+                'tenure': tenure, 'PhoneService': 'Yes', 'MultipleLines': 'No',
+                'InternetService': internet,
+                'OnlineSecurity': 'Yes' if has_sec else 'No' if internet != 'No' else 'No internet service',
+                'OnlineBackup': 'No', 'DeviceProtection': 'No',
+                'TechSupport': 'Yes' if has_tech else 'No' if internet != 'No' else 'No internet service',
+                'StreamingTV': 'No', 'StreamingMovies': 'No',
+                'Contract': contract, 'PaperlessBilling': 'Yes',
+                'PaymentMethod': 'Electronic check',
+                'MonthlyCharges': monthly,
+                'TotalCharges': tenure * monthly
+            }])
+
+        df_base = build_sim_df(base_tenure, base_monthly, base_internet, base_contract, False, False)
+        base_prob = model.predict_proba(df_base)[0][1] * 100
+        
+        new_contract = lever_contract if lever_contract != "Same as Base" else base_contract
+        # Estimate new monthly (add $5 for tech support, $5 for security, -$10 for long term contract if changed)
+        new_monthly = base_monthly
+        if lever_tech_support: new_monthly += 5
+        if lever_online_security: new_monthly += 5
+        if lever_contract != "Same as Base": new_monthly -= 10
+        
+        df_new = build_sim_df(base_tenure, max(10, new_monthly), base_internet, new_contract, lever_tech_support, lever_online_security)
+        new_prob = model.predict_proba(df_new)[0][1] * 100
+        
+        delta = new_prob - base_prob
+        
+        res_col1, res_col2, res_col3 = st.columns(3)
+        res_col1.metric("Base Churn Probability", f"{base_prob:.1f}%")
+        res_col2.metric("New Churn Probability", f"{new_prob:.1f}%", f"{delta:.1f}%", delta_color="inverse")
+        
+        if delta < -5:
+            res_col3.success("✅ Highly effective retention strategy!")
+        elif delta > 0:
+            res_col3.error("⚠️ Changes increased churn risk!")
+        else:
+            res_col3.info("ℹ️ Strategy has minor impact.")

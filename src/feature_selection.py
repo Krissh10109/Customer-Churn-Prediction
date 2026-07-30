@@ -1,36 +1,55 @@
 import os
-import pandas as pd
-import numpy as np
-from sklearn.feature_selection import mutual_info_classif
-from sklearn.ensemble import RandomForestClassifier
+import csv
+import math
 
-def select_features_mutual_info(X, y, feature_names, top_n=15):
-    """
-    Calculate and return Mutual Information scores for all features.
-    """
-    mi_scores = mutual_info_classif(X, y, random_state=42)
-    mi_series = pd.Series(mi_scores, index=feature_names).sort_values(ascending=False)
-    print("\n--- Top Mutual Information Scores ---")
-    print(mi_series.head(top_n))
-    return mi_series
+def load_cleaned_train(cleaned_path=os.path.join('data', 'cleaned', 'train_data.csv')):
+    if not os.path.exists(cleaned_path):
+        cleaned_path = os.path.join('Customer-Churn-Prediction', 'data', 'cleaned', 'train_data.csv')
+    if not os.path.exists(cleaned_path):
+        raise FileNotFoundError(f"Cleaned train data not found at {cleaned_path}")
+        
+    with open(cleaned_path, 'r', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        headers = next(reader)
+        data = [row for row in reader if row]
+        
+    feature_names = headers[:-1]
+    X = [[float(val) for val in row[:-1]] for row in data]
+    y = [int(row[-1]) for row in data]
+    return X, y, feature_names
 
-def select_features_rf(X, y, feature_names, top_n=15):
-    """
-    Calculate and return Random Forest feature importances.
-    """
-    rf = RandomForestClassifier(n_estimators=100, random_state=42, n_jobs=-1)
-    rf.fit(X, y)
-    importances = pd.Series(rf.feature_importances_, index=feature_names).sort_values(ascending=False)
-    print("\n--- Top Random Forest Feature Importances ---")
-    print(importances.head(top_n))
-    return importances
+def pearson_correlation(x_vec, y_vec):
+    n = len(x_vec)
+    mean_x = sum(x_vec) / n
+    mean_y = sum(y_vec) / n
+    
+    num = sum((x_vec[i] - mean_x) * (y_vec[i] - mean_y) for i in range(n))
+    den_x = sum((x_vec[i] - mean_x) ** 2 for i in range(n))
+    den_y = sum((y_vec[i] - mean_y) ** 2 for i in range(n))
+    
+    denom = math.sqrt(den_x * den_y)
+    return num / denom if denom != 0 else 0.0
+
+def select_features(X, y, feature_names, top_n=15):
+    n_features = len(feature_names)
+    scores = []
+    
+    for j in range(n_features):
+        col_vals = [X[i][j] for i in range(len(X))]
+        corr = pearson_correlation(col_vals, y)
+        scores.append((feature_names[j], abs(corr), corr))
+        
+    scores.sort(key=lambda x: x[1], reverse=True)
+    
+    print("\n--- Top Feature Associations (Pearson Absolute Correlation) ---")
+    for feat, abs_c, orig_c in scores[:top_n]:
+        print(f"Feature: {feat:<35} | Abs Correlation: {abs_c:.4f} (Original: {orig_c:+.4f})")
+        
+    return scores
 
 if __name__ == '__main__':
-    from data_preprocessing import preprocess_data
-    data_path = os.path.join('Customer-Churn-Prediction', 'data', 'Telco_Customer_Churn_Dataset.csv')
-    if os.path.exists(data_path):
-        X_train, X_test, y_train, y_test, features = preprocess_data(data_path)
-        select_features_mutual_info(X_train, y_train, features)
-        select_features_rf(X_train, y_train, features)
-    else:
-        print(f"Please run preprocessing from the root directory or ensure {data_path} exists.")
+    try:
+        X, y, feature_names = load_cleaned_train()
+        select_features(X, y, feature_names)
+    except Exception as e:
+        print(f"Feature selection error: {e}")
