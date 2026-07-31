@@ -1,5 +1,5 @@
 {
-    "type": "PurePythonLogisticRegression",
+    "type": "LogisticRegression",
     "weights": [
         -0.04938787720679039,
         -0.05669635284074765,

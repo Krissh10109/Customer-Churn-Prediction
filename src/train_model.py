@@ -7,7 +7,6 @@ def sigmoid(z):
     if z >= 0:
         return 1.0 / (1.0 + math.exp(-z))
     else:
-        # Avoid overflow
         return math.exp(z) / (1.0 + math.exp(z))
 
 def load_cleaned_data(data_dir=os.path.join('data', 'cleaned')):
@@ -36,7 +35,7 @@ def load_cleaned_data(data_dir=os.path.join('data', 'cleaned')):
     
     return X_train, y_train, X_test, y_test, feature_names
 
-class PurePythonLogisticRegression:
+class LogisticRegression:
     def __init__(self, lr=0.1, reg_lambda=0.01, epochs=300, use_class_weights=True):
         self.lr = lr
         self.reg_lambda = reg_lambda
@@ -51,7 +50,6 @@ class PurePythonLogisticRegression:
         self.weights = [0.0] * n_features
         self.bias = 0.0
         
-        # Calculate sample weights if class weighting is enabled
         n_pos = sum(y)
         n_neg = n_samples - n_pos
         w_pos = n_samples / (2.0 * n_pos) if n_pos > 0 else 1.0
@@ -90,7 +88,6 @@ class PurePythonLogisticRegression:
         return [1 if p >= threshold else 0 for p in probs]
 
 def compute_auc(y_true, y_prob):
-    # Sort samples by probability
     samples = sorted(zip(y_prob, y_true), key=lambda x: x[0], reverse=True)
     n_pos = sum(y_true)
     n_neg = len(y_true) - n_pos
@@ -117,7 +114,7 @@ def compute_auc(y_true, y_prob):
 def train_and_benchmark_models(models_dir='models', outputs_dir='outputs'):
     X_train, y_train, X_test, y_test, feature_names = load_cleaned_data()
     
-    print("\n================ Model Benchmarking & Grid Search ================")
+    print("\n================ Model Benchmarking ================")
     param_grid = [
         {'lr': 0.05, 'lambda': 0.01},
         {'lr': 0.1, 'lambda': 0.01},
@@ -129,23 +126,22 @@ def train_and_benchmark_models(models_dir='models', outputs_dir='outputs'):
     best_params = None
     
     for params in param_grid:
-        model = PurePythonLogisticRegression(lr=params['lr'], reg_lambda=params['lambda'], epochs=250, use_class_weights=True)
+        model = LogisticRegression(lr=params['lr'], reg_lambda=params['lambda'], epochs=250, use_class_weights=True)
         model.fit(X_train, y_train)
         probs = model.predict_proba(X_test)
         auc = compute_auc(y_test, probs)
-        print(f"[GridSearch Candidate] LR: {params['lr']} | Lambda: {params['lambda']} --> Test ROC-AUC: {auc:.4f}")
+        print(f"[Candidate] LR: {params['lr']} | Lambda: {params['lambda']} --> Test ROC-AUC: {auc:.4f}")
         if auc > best_auc:
             best_auc = auc
             best_model = model
             best_params = params
             
-    print("==================================================================")
+    print("=====================================================")
     print(f"Best Hyperparameters Selected: {best_params} with ROC-AUC: {best_auc:.4f}")
     
-    # Save best model to JSON
     os.makedirs(models_dir, exist_ok=True)
     model_data = {
-        'type': 'PurePythonLogisticRegression',
+        'type': 'LogisticRegression',
         'weights': best_model.weights,
         'bias': best_model.bias,
         'feature_names': feature_names,
@@ -157,7 +153,7 @@ def train_and_benchmark_models(models_dir='models', outputs_dir='outputs'):
     with open(model_path, 'w', encoding='utf-8') as f:
         json.dump(model_data, f, indent=4)
         
-    print(f"Saved trained pure Python model to {model_path}")
+    print(f"Saved model pipeline to {model_path}")
     return best_model
 
 if __name__ == '__main__':

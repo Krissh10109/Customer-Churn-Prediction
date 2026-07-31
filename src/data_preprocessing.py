@@ -6,7 +6,7 @@ import json
 
 def load_csv(filepath):
     if not os.path.exists(filepath):
-        raise FileNotFoundError(f"File not found at {filepath}")
+        raise FileNotFoundError(f"File not found: {filepath}")
     with open(filepath, 'r', encoding='utf-8') as f:
         reader = csv.reader(f)
         headers = next(reader)
@@ -14,27 +14,23 @@ def load_csv(filepath):
     return headers, data
 
 def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('data', 'cleaned')):
-    print("Loading raw dataset with standard library...")
+    print("Loading dataset...")
     headers, data = load_csv(data_path)
     
-    # Header indices
     header_idx = {h: i for i, h in enumerate(headers)}
-    
-    # Drop customerID if present
     cust_id_idx = header_idx.get('customerID', None)
     churn_idx = header_idx.get('Churn', None)
     
     feature_indices = [i for i in range(len(headers)) if i not in (cust_id_idx, churn_idx)]
     feature_names_raw = [headers[i] for i in feature_indices]
-    
     numeric_cols = ['tenure', 'MonthlyCharges', 'TotalCharges']
     
-    # Process rows
     processed_rows = []
     targets = []
     
     for row in data:
-        if not row: continue
+        if not row:
+            continue
         target = 1 if row[churn_idx].strip() == 'Yes' else 0
         targets.append(target)
         
@@ -43,7 +39,6 @@ def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('da
             col_name = headers[idx]
             val = row[idx].strip()
             if col_name == 'TotalCharges':
-                # Impute missing TotalCharges with 0.0
                 try:
                     val = float(val)
                 except ValueError:
@@ -53,13 +48,11 @@ def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('da
             row_dict[col_name] = val
         processed_rows.append(row_dict)
         
-    # Get distinct values for categorical variables for One-Hot Encoding
     cat_values = {}
     for col in feature_names_raw:
         if col not in numeric_cols:
             cat_values[col] = sorted(list(set(r[col] for r in processed_rows)))
             
-    # Build encoded feature list
     encoded_feature_names = []
     for col in feature_names_raw:
         if col in numeric_cols:
@@ -68,7 +61,6 @@ def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('da
             for val in cat_values[col]:
                 encoded_feature_names.append(f"{col}_{val}")
                 
-    # One-Hot Encode and convert to numeric vectors
     X_vectors = []
     for r in processed_rows:
         vector = []
@@ -80,7 +72,6 @@ def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('da
                     vector.append(1.0 if r[col] == val else 0.0)
         X_vectors.append(vector)
         
-    # Stratified 80/20 train test split
     random.seed(42)
     pos_indices = [i for i, t in enumerate(targets) if t == 1]
     neg_indices = [i for i, t in enumerate(targets) if t == 0]
@@ -100,7 +91,6 @@ def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('da
     X_test_raw = [X_vectors[i] for i in range(len(X_vectors)) if i in test_idx]
     y_test = [targets[i] for i in range(len(targets)) if i in test_idx]
     
-    # Compute mean and std on numeric columns from training data for Standard Scaling
     num_indices = [encoded_feature_names.index(col) for col in numeric_cols]
     means = {}
     stds = {}
@@ -113,7 +103,6 @@ def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('da
         means[idx] = mean
         stds[idx] = std
         
-    # Scale numerical columns
     def scale_dataset(dataset):
         scaled = []
         for row in dataset:
@@ -126,7 +115,6 @@ def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('da
     X_train_scaled = scale_dataset(X_train_raw)
     X_test_scaled = scale_dataset(X_test_raw)
     
-    # Export cleaned files and model params
     os.makedirs(cleaned_dir, exist_ok=True)
     os.makedirs(models_dir, exist_ok=True)
     
@@ -144,7 +132,6 @@ def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('da
     save_matrix(os.path.join(cleaned_dir, 'train_data.csv'), encoded_feature_names, X_train_scaled, y_train)
     save_matrix(os.path.join(cleaned_dir, 'test_data.csv'), encoded_feature_names, X_test_scaled, y_test)
     
-    # Save preprocessor metadata
     preprocessor_meta = {
         'feature_names': encoded_feature_names,
         'numeric_cols': numeric_cols,
@@ -157,7 +144,7 @@ def preprocess_data(data_path, models_dir='models', cleaned_dir=os.path.join('da
     with open(os.path.join(models_dir, 'preprocessor.json'), 'w', encoding='utf-8') as f:
         json.dump(preprocessor_meta, f, indent=4)
         
-    print(f"Data Preprocessed Successfully: Train rows={len(X_train_scaled)}, Test rows={len(X_test_scaled)}, Features={len(encoded_feature_names)}")
+    print(f"Data preprocessed: Train size={len(X_train_scaled)}, Test size={len(X_test_scaled)}, Features={len(encoded_feature_names)}")
     return X_train_scaled, X_test_scaled, y_train, y_test, encoded_feature_names
 
 if __name__ == '__main__':

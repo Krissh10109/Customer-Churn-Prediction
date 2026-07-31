@@ -23,7 +23,6 @@ def evaluate_model(models_dir='models', outputs_dir='outputs'):
     
     _, _, X_test, y_test, _ = load_cleaned_data()
     
-    # Compute predictions
     y_prob = []
     y_pred = []
     for row in X_test:
@@ -32,7 +31,6 @@ def evaluate_model(models_dir='models', outputs_dir='outputs'):
         y_prob.append(prob)
         y_pred.append(1 if prob >= 0.5 else 0)
         
-    # Calculate metrics
     tp = sum(1 for i in range(len(y_test)) if y_test[i] == 1 and y_pred[i] == 1)
     tn = sum(1 for i in range(len(y_test)) if y_test[i] == 0 and y_pred[i] == 0)
     fp = sum(1 for i in range(len(y_test)) if y_test[i] == 0 and y_pred[i] == 1)
@@ -58,7 +56,6 @@ def evaluate_model(models_dir='models', outputs_dir='outputs'):
     
     os.makedirs(outputs_dir, exist_ok=True)
     
-    # Save evaluation text summary
     with open(os.path.join(outputs_dir, 'evaluation_metrics.txt'), 'w', encoding='utf-8') as f:
         f.write(f"Accuracy:  {accuracy:.4f}\n")
         f.write(f"Precision: {precision:.4f}\n")
@@ -66,13 +63,11 @@ def evaluate_model(models_dir='models', outputs_dir='outputs'):
         f.write(f"F1-Score:  {f1:.4f}\n")
         f.write(f"ROC-AUC:   {roc_auc:.4f}\n")
         
-    # Save benchmark CSV
     with open(os.path.join(outputs_dir, 'model_benchmark.csv'), 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         writer.writerow(['Model', 'Accuracy', 'Precision', 'Recall', 'F1-Score', 'ROC-AUC'])
-        writer.writerow(['Pure Python Logistic Regression (Balanced)', f"{accuracy:.4f}", f"{precision:.4f}", f"{recall:.4f}", f"{f1:.4f}", f"{roc_auc:.4f}"])
+        writer.writerow(['Logistic Regression (Balanced)', f"{accuracy:.4f}", f"{precision:.4f}", f"{recall:.4f}", f"{f1:.4f}", f"{roc_auc:.4f}"])
         
-    # Save feature importances top 15
     feat_weights = sorted(zip(feature_names, [abs(w) for w in weights], weights), key=lambda x: x[1], reverse=True)
     with open(os.path.join(outputs_dir, 'feature_importance.txt'), 'w', encoding='utf-8') as f:
         f.write("Rank | Feature Name | Absolute Weight | Sign\n")

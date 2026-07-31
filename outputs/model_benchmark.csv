@@ -1,2 +1,2 @@
 Model,Accuracy,Precision,Recall,F1-Score,ROC-AUC
-Pure Python Logistic Regression (Balanced),0.7743,0.5500,0.8235,0.6595,0.8671
+Logistic Regression (Balanced),0.7743,0.5500,0.8235,0.6595,0.8671

@@ -41,7 +41,7 @@ def select_features(X, y, feature_names, top_n=15):
         
     scores.sort(key=lambda x: x[1], reverse=True)
     
-    print("\n--- Top Feature Associations (Pearson Absolute Correlation) ---")
+    print("\n--- Top Feature Associations (Pearson Correlation) ---")
     for feat, abs_c, orig_c in scores[:top_n]:
         print(f"Feature: {feat:<35} | Abs Correlation: {abs_c:.4f} (Original: {orig_c:+.4f})")
         
